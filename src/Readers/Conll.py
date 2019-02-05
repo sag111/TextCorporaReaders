@@ -5,20 +5,13 @@ class CoNLLUReader(object):
     Класс для работы с форматом Conll-u
     """
     def __init__(self):
+        self.columns = ["tokenId", "form", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "space"]
         pass
     
     def tokenLineToDict(self, tokenLine):
         d = {}
-        d["tokenId"] = tokenLine[0]
-        d["form"] = tokenLine[1]
-        d["lemma"] = tokenLine[2]
-        d["upos"] = tokenLine[3]
-        d["xpos"] = tokenLine[4]
-        d["morph"] = tokenLine[5]
-        d["head"] = tokenLine[6]
-        d["deprel"] = tokenLine[7]
-        d["deps"] = tokenLine[8]
-        d["space"] = tokenLine[9]
+        for c_i, c in enumerate(self.columns):
+            d[c] = tokenLine[c_i]
         return d
     
     def tokensToPositions():
@@ -51,5 +44,18 @@ class CoNLLUReader(object):
                 
         return {"rawText": text, "tokensWithFeatures":dicts}
         
-    def write(self, filePath):
-        raise Exception("Not implemented")
+    def write(self, data, filePath=None):
+        conllLines = []
+        for sent in data["tokensWithFeatures"]:
+            
+            for token in sent:
+                line = [token[c] for c in self.columns]
+                line = "\t".join(line)
+                conllLines.append(line)
+            conllLines.append("")
+        if filePath is not None:
+            with open(filePath, "w") as f:
+                for line in conllLines:
+                    f.write(line + "\n")
+        else:
+            return "\n".join(conllLines)
