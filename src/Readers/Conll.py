@@ -1,4 +1,5 @@
 # -*- coding: utf8 -*-
+import re
 
 class CoNLLUReader(object):
     """
@@ -13,7 +14,7 @@ class CoNLLUReader(object):
         d = {}
         for c_i, c in enumerate(self.columns):
             if c=="spaceAfter":
-                tokenLine[c_i] = tokenLine[c_i].replace("SpacesAfter=", "")
+                tokenLine[c_i] = re.sub("Spaces?After=", "", tokenLine[c_i], re.U)
                 tokenLine[c_i] = tokenLine[c_i].replace("\\r\\n", "\n")
                 tokenLine[c_i] = tokenLine[c_i].replace("\\n", "\n")
                 tokenLine[c_i] = tokenLine[c_i].replace("\\s", " ")
@@ -22,6 +23,18 @@ class CoNLLUReader(object):
             else:
                 d[c] = tokenLine[c_i]            
         return d
+    
+    def tokenDictToLine(self, tokenDict):        
+        if tokenDict["spaceAfter"] !="_":
+            tokenDict["spaceAfter"] = tokenDict["spaceAfter"].replace("\n", "\\n")
+            tokenDict["spaceAfter"] = tokenDict["spaceAfter"].replace(" ", "\\s")
+            if tokenDict["spaceAfter"]=="No":
+                tokenDict["spaceAfter"] = "SpaceAfter="+tokenDict["spaceAfter"]
+            else:
+                tokenDict["spaceAfter"] = "SpacesAfter="+tokenDict["spaceAfter"]
+        line = [str(tokenDict[c]) for c in self.columns]
+        line = "\t".join(line)
+        return line
     
     def tokensToPositions():
         pass
@@ -65,7 +78,7 @@ class CoNLLUReader(object):
                 rawText += token_d["form"]
                 if token_d["spaceAfter"] == "_":
                     rawText += " "
-                elif token_d["spaceAfter"] == "SpacesAfter=No":
+                elif token_d["spaceAfter"] == "No":
                     continue
                 else:
                     rawText += token_d["spaceAfter"]
@@ -77,12 +90,14 @@ class CoNLLUReader(object):
     def write(self, data, filePath=None):
         conllLines = []
         conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
-        for s_i, sent in enumerate(data["sentences"]):
-            conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
+        for s_i, sentence_d in enumerate(data["sentences"]):
+            if s_i in data["paragraphs"]:
+                conllLines.append("# newpar")
+            conllLines.append("# sent_id = {}".format(sentence_d["meta"]["id"]))
+            conllLines.append("# text = {}".format(sentence_d["raw"]))
             
-            for token in sent:
-                line = [token[c] for c in self.columns]
-                line = "\t".join(line)
+            for token in sentence_d["tokens"]:
+                line = self.tokenDictToLine(token)
                 conllLines.append(line)
             conllLines.append("")
         if filePath is not None:
@@ -90,4 +105,5 @@ class CoNLLUReader(object):
                 for line in conllLines:
                     f.write(line + "\n")
         else:
-            return "\n".join(conllLines)
+            return "\n".join(conllLines) + "\n"
+        #raise Exception("Not implemented")
