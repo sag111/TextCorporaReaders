@@ -5,13 +5,22 @@ class CoNLLUReader(object):
     Класс для работы с форматом Conll-u
     """
     def __init__(self):
-        self.columns = ["tokenId", "form", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "space"]
+        self.columns = ["id", "form", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "spaceAfter"]
+        self.dtypes = {"id": int, "head": int}
         pass
     
     def tokenLineToDict(self, tokenLine):
         d = {}
         for c_i, c in enumerate(self.columns):
-            d[c] = tokenLine[c_i]
+            if c=="spaceAfter":
+                tokenLine[c_i] = tokenLine[c_i].replace("SpacesAfter=", "")
+                tokenLine[c_i] = tokenLine[c_i].replace("\\r\\n", "\n")
+                tokenLine[c_i] = tokenLine[c_i].replace("\\n", "\n")
+                tokenLine[c_i] = tokenLine[c_i].replace("\\s", " ")
+            if self.dtypes.get(c, None) == int:
+                d[c] = int(tokenLine[c_i])
+            else:
+                d[c] = tokenLine[c_i]            
         return d
     
     def tokensToPositions():
@@ -20,33 +29,56 @@ class CoNLLUReader(object):
     def read(self, filePath):
         with open(filePath, "r", encoding="utf-8") as f:
             conllu = f.read()
+        conllu = conllu[:-2]  # потому что в конце conllu \n\n
         conllu = conllu.split("\n\n")
         conllu = [x.split("\n") for x in conllu]
-        conllu = [[token.split("\t") for token in sent] for sent in conllu ]
+        conllu = [[token.strip().split("\t") for token in sent] for sent in conllu ]
         
-        dicts = [[self.tokenLineToDict(token) for token in sent if len(token)==10] for sent in conllu ]
-        text = ""
-        #for sent in conllu:
-        #    for line in sent:
-        #        line = line[0]
-        #        mark = "# text = "
-        #        if line[:len(mark)] == mark:
-        #            text += line[len(mark):]
-        for sent in dicts:
-            for token in sent:
-                text += token["form"]
-                if token["space"] == "SpacesAfter=\\n":
-                    text += "\n"
-                elif token["space"] == "SpacesAfter=No":
+        #dicts = [[self.tokenLineToDict(token) for token in sent if len(token)==10] for sent in conllu ]
+        text = {"raw":"", "meta":{}, "sentences": [], "paragraphs": []}
+        rawText = ""
+        for s_i, sent in enumerate(conllu):
+            sentence_d = {"raw":"", "meta":{}, "tokens":[]}
+            for t_i, token in enumerate(sent):
+                token_d = {}
+                if len(token) != 10:
+                    # либо это коммент либо какая-то хрень
+                    token = "\t".join(token)
+                    if token[0] == "#":
+                        if "newdoc id" in token:
+                            text["meta"]["id"] = token.replace("# newdoc id = ", "")
+                        elif "newpar" in token:
+                            # paragraphs = sent idx where new paragraph starts
+                            # блин, вот это не правильно, id то не тот, который указан ниже
+                            text["paragraphs"].append(s_i)
+                        elif "sent_id" in token:
+                            sentence_d["meta"]["id"] = int(token.replace("# sent_id = ", ""))
+                        elif "text" in token:
+                            sentence_d["raw"] = token.replace("# text = ", "")  
+                        continue
+                    else:
+                        raise ValueError("Wierd token with len less then 10:\n{}".format(token))
+                token_d = self.tokenLineToDict(token)
+                
+                sentence_d["tokens"].append(token_d)
+                
+                rawText += token_d["form"]
+                if token_d["spaceAfter"] == "_":
+                    rawText += " "
+                elif token_d["spaceAfter"] == "SpacesAfter=No":
                     continue
                 else:
-                    text += " "
-                
-        return {"rawText": text, "tokensWithFeatures":dicts}
+                    rawText += token_d["spaceAfter"]
+            text["sentences"].append(sentence_d)
+
+        text["raw"] = rawText
+        return text
         
     def write(self, data, filePath=None):
         conllLines = []
-        for sent in data["tokensWithFeatures"]:
+        conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
+        for s_i, sent in enumerate(data["sentences"]):
+            conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
             
             for token in sent:
                 line = [token[c] for c in self.columns]
