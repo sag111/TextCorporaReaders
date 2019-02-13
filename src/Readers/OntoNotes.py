@@ -2,81 +2,82 @@
 
 # http://conll.cemantix.org/2012/data.html
 
-import os
-
-
 class OntoNotesReader(object):
     """
     Класс для работы с форматом OntoNotes
     """
     def __init__(self):
-        self.columns = ["docName", "partId", "tokenId", "form", "upos", "parseBit",
-                        "lemma", "frameset", "sense", "speaker", "NER", "coreference"]  # "predicateArgs"
+        self.columns = ["fileName", "partId", "id", "form", "upos", "parseBit",
+                        "lemma", "frameset", "sense", "speaker", "NER", "coreference"] # "predicateArgs"
         self.defaultValues = [None, 0, 0, "", "-", "*", "-", "-", "-", "-", "*", "-"]
         pass
     
     def tokenLineToDict(self, tokenLine):
         d = {}
-        d["id"] = tokenLine[0]
-        d["form"] = tokenLine[1]
-        d["lemma"] = tokenLine[2]
-        d["upos"] = tokenLine[3]
-        d["xpos"] = tokenLine[4]
-        d["morph"] = tokenLine[5]
-        d["head"] = tokenLine[6]
-        d["deprel"] = tokenLine[7]
-        d["deps"] = tokenLine[8]
-        d["space"] = tokenLine[9]
+        d["id"] = tokenLine[2]
+        d["form"] = tokenLine[3]
+        d["upos"] = tokenLine[4]
+        d["xpos"] = "_"
+        d["parseBit"] = tokenLine[5]
+        d["lemma"] = tokenLine[6]
+        d["frameset"] = None
+        d["sense"] = None
+        d["speaker"] = None
+        d["NER"] = None
+        d["coreference"] = None
         return d
 
-    def tokenDictToLine(self, tokenDict, docInfo):
+    def tokenDictToLine(self, tokenDict, docMeta):
         line = []
         for c_i, colName in enumerate(self.columns):
-            if colName in ["docName", "partId"]:
-                line.append(docInfo[colName])
+            if colName == "fileName":
+                line.append(docMeta[colName])
+            elif colName == "partId":
+                line.append(0)
             elif colName in tokenDict:
-                if colName=="form":
-                    tokenDict[colName] = tokenDict[colName].replace(" ", "_")
                 line.append(tokenDict[colName])
             else:
                 line.append(self.defaultValues[c_i])
         line = "\t".join([str(x) for x in line])
         return line
     
-    def checkFixParse(self, tokens):
+    def checkFixParse(self, sentences):
         """
         сейчас просто вставляется,
         а надо проверять и возможно это востанавливается из парсинга
         """
-        for s_i, sent in enumerate(tokens):
-            for t_i, token in enumerate(sent):
-                if t_i==0:
-                    token["parseBit"] = "(TOP*"
-                elif t_i==len(sent)-1:
-                    token["parseBit"] = "*)"
-                else:
-                    token["parseBit"] = "*"
+        for s_i, sent in enumerate(sentences):
+            for t_i, token in enumerate(sent["tokens"]):
+                if "parseBit" not in token:
+                    if t_i==0:
+                        token["parseBit"] = "(TOP*"
+                    elif t_i==len(sent)-1:
+                        token["parseBit"] = "*)"
+                    else:
+                        token["parseBit"] = "*"
     
     def tokensToPositions():
         pass
     
-    def write(self, data, outFile=None):
-        if "genre" in data["docMeta"] and data["docMeta"]["genre"] is not None:
-            data["docMeta"]["docName"] = data["docMeta"]["genre"] + "/" + data["docMeta"]["docName"]
-        strData = "#begin document ({}); part {}\n".format(data["docMeta"]["docName"], data["docMeta"]["partId"])
+    def write(self, docData, outFile=None):
+        if "genre" in docData["meta"] and docData["meta"]["genre"] is not None:
+            docData["meta"]["fileName"] = docData["meta"]["genre"] + "/" + docData["meta"]["fileName"]
+        strData = "#begin document ({}); part {}\n".format(docData["meta"]["fileName"], docData["meta"]["partId"])
         
-        if "tokensWithFeatures" in data:
-            self.checkFixParse(data["tokensWithFeatures"])
-            for s_i, sent in enumerate(data["tokensWithFeatures"]):
-                for t_i, token in enumerate(sent):
-                    line = self.tokenDictToLine(token, data["docMeta"])
-                    strData += line +"\n"
+        
+        self.checkFixParse(docData["sentences"])
+        for s_i, sent in enumerate(docData["sentences"]):
+            for t_i, token in enumerate(sent["tokens"]):
+                line = self.tokenDictToLine(token, docData["meta"])
+                strData += line +"\n"
 
-                if s_i != len(data["tokensWithFeatures"]) - 1:
-                    strData += "\n"
+            if s_i != len(docData["sentences"]) - 1:
+                strData += "\n"
             
         
         strData += "#end document\n"
         
         return strData
-        
+    
+    def read(self, filePath):
+        raise ValueError("Not implemented")
