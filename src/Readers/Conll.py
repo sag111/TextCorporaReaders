@@ -1,4 +1,5 @@
 # -*- coding: utf8 -*-
+import os
 import re
 
 class CoNLLUReader(object):
@@ -49,6 +50,7 @@ class CoNLLUReader(object):
         
         #dicts = [[self.tokenLineToDict(token) for token in sent if len(token)==10] for sent in conllu ]
         text = {"raw":"", "meta":{}, "sentences": [], "paragraphs": []}
+        text["meta"]["fileName"] = os.path.basename(filePath)
         rawText = ""
         for s_i, sent in enumerate(conllu):
             sentence_d = {"raw":"", "meta":{}, "tokens":[]}
