@@ -15,7 +15,8 @@ class OntoNotesReader(object):
     def __init__(self):
         self.columns = ["docName", "partId", "id", "form", "upos", "parseBit",
                         "lemma", "frameset", "sense", "speaker", "NER", "PredicateArguments" "coreference"] # "predicateArgs"
-        self.defaultValues = [None, 0, 0, "", "-", "*", "-", "-", "-", "-", "*", "-"]
+        self.defaultColumnValues = [None, 0, 0, "", "-", "*", "-", "-", "-", "-", "*", "-"]
+        self.defaultValues = {"partId": 0, "frameset": "-", "NER": "*", "speaker": "-", "sense": "-"}
         pass
     
     def tokenLineToDict(self, tokenLine):
@@ -34,23 +35,31 @@ class OntoNotesReader(object):
         d["coreference"] = tokenLine[-1]
         return d
 
+    def fixForm(self, form):
+        form = form.replace(" ", "_")
+        form = form.replace("(", "-LBR-")  # костыли
+        form = form.replace(")", "-RBR-")  # костыли
+        return form
+
     def tokenDictToLine(self, tokenIdxInDoc, tokenDict, docData):
         line = []
         line.append(docData["meta"]["docName"])
         line.append(docData["meta"]["partId"])
 
         line.append(tokenDict["id"])
-        line.append(tokenDict["form"].replace(" ", "_"))
-        line.append(tokenDict["upos"])
+        line.append(self.fixForm(tokenDict["form"]))
+        line.append(tokenDict["upos"].replace(" ", ":"))
         line.append(tokenDict["parseBit"])
-        line.append(tokenDict["lemma"].replace(" ", "_"))
-        line.append(tokenDict["frameset"])
-        line.append(tokenDict["sense"])
-        line.append(tokenDict["speaker"])
-        line.append(tokenDict["NER"])        
+        line.append(self.fixForm(tokenDict["lemma"]))
+        line.append(tokenDict.get("frameset", self.defaultValues["frameset"]))
+        line.append(tokenDict.get("sense", self.defaultValues["sense"]))
+        line.append(tokenDict.get("speaker", self.defaultValues["speaker"]))
+        line.append(tokenDict.get("NER", self.defaultValues["NER"]))
+        
+        if "PredicateArguments" in tokenDict:
+            for predicArg in tokenDict["PredicateArguments"]:
+                line.append(predicArg)
         coreferenceMarks = []
-        for predicArg in tokenDict["PredicateArguments"]:
-            line.append(predicArg)
         startOfmentions = []
         endOfMentions = []
         wholeMention = None
@@ -91,9 +100,12 @@ class OntoNotesReader(object):
         for s_i, sent in enumerate(sentences):
             for t_i, token in enumerate(sent["tokens"]):
                 if "parseBit" not in token:
-                    if t_i==0:
+                    #if len(sent)==1:
+                    if t_i==0 and t_i==len(sent["tokens"])-1: 
+                        token["parseBit"] = "(TOP*)"
+                    elif t_i==0:
                         token["parseBit"] = "(TOP*"
-                    elif t_i==len(sent)-1:
+                    elif t_i==len(sent["tokens"])-1:
                         token["parseBit"] = "*)"
                     else:
                         token["parseBit"] = "*"
@@ -105,7 +117,9 @@ class OntoNotesReader(object):
         collectionString = ""
         for docData in collectionData:
             collectionString += "#begin document ({}); part {:03d}\n".format(docData["meta"]["docName"], docData["meta"]["partId"])
-            tokenIdxInDoc = 1  # костыль
+            #tokenIdxInDoc = 1  # костыль
+            tokenIdxInDoc = 0  # так, тут надо разобраться, в одних документах надо начинать с 1, в других с 0
+            self.checkFixParse(docData["sentences"])
             for sentenceData in docData["sentences"]:
                 for token in sentenceData["tokens"]:
                     collectionString += self.tokenDictToLine(tokenIdxInDoc, token, docData) + "\n"
@@ -176,7 +190,7 @@ class OntoNotesReader(object):
                             print("\n".join(sentence))
                             raise ve
                         sentenceData["tokens"].append(token_d)
-                    tokenIdx += 1
+                        tokenIdx += 1
                 if not(endOfDoc and len(sentenceData["tokens"])==0):
                     docData["sentences"].append(sentenceData)
             
