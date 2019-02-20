@@ -34,10 +34,10 @@ class OpenCorpora(object):
         tokenLine.append(tokenDict["form"])
         tokenLine.append(tokenDict["lemma"])
         tokenLine.append(tokenDict["upos"])
-        if tokenDict["morph"] != "":
+        if "morph" in tokenDict and tokenDict["morph"] != "":
             tokenLine[-1] += ","+tokenDict["morph"]
-        tokenLine.append(tokenDict["isItCoref"])
-        tokenLine.append(tokenDict["isItMention"])
+        tokenLine.append(tokenDict.get("isItCoref", self.defaultValues["isItCoref"]))
+        tokenLine.append(tokenDict.get("isItMention", self.defaultValues["isItMention"]))
         return "\t".join([str(x) for x in tokenLine])
     
     def tokensToPositions():
