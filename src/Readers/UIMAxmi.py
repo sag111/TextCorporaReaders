@@ -31,6 +31,40 @@ class UIMAxmiReader(object):
                 self.entities[k] = []
         pass
     
+    def processCoreference(self)
+        clusterArrays = []
+        for cluster in self.coreference["clusters"]:
+            clusterArrays.append([])
+            nextId = cluster["firstId"]
+            while nextId != -1:
+                for m_i, mention in enumerate(self.coreference["mentions"]):
+                    if mention["id"]==nextId:
+                        clusterArrays[-1].append(m_i)
+                        newNextId = mention["next"]
+                        break
+                if newNextId==nextId:
+                    raise ValueError("next mention id not found")
+                nextId = newNextId
+
+        self.coreference["clusters"] = clusterArrays
+    
+    def processConcatenation(self)
+        clusterArrays = []
+        for cluster in self.concatenation["clusters"]:
+            clusterArrays.append([])
+            nextId = cluster["firstId"]
+            while nextId != -1:
+                for m_i, mention in enumerate(self.concatenation["mentions"]):
+                    if mention["id"]==nextId:
+                        clusterArrays[-1].append(m_i)
+                        newNextId = mention["next"]
+                        break
+                if newNextId==nextId:
+                    raise ValueError("next mention id not found")
+                nextId = newNextId
+
+        self.concatenation["clusters"] = clusterArrays
+
     def getEntities(self):
         self.text = None
         for child in self.fileRoot:
@@ -61,23 +95,9 @@ class UIMAxmiReader(object):
                                                          "id": int(entity["{http://www.omg.org/XMI}id"])})
                 elif "CoreferenceChain" in child.tag:
                     self.concatenation["clusters"].append({"firstId": int(entity['first'])})
-
-        if self.coreference is not None:
-            clusterArrays = []
-            for cluster in self.coreference["clusters"]:
-                clusterArrays.append([])
-                nextId = cluster["firstId"]
-                while nextId != -1:
-                    for m_i, mention in enumerate(self.coreference["mentions"]):
-                        if mention["id"]==nextId:
-                            clusterArrays[-1].append(m_i)
-                            newNextId = mention["next"]
-                            break
-                    if newNextId==nextId:
-                        raise ValueError("next mention id not found")
-                    nextId = newNextId
-                
-            self.coreference["clusters"] = clusterArrays
+        
+        self.processCoreference()
+        self.processConcatenation()
         
         self.text = self.text.replace("&amp;", "&")
         self.text = self.text.replace("&#10;", "\n")
@@ -96,4 +116,5 @@ class UIMAxmiReader(object):
         if self.concatenation is not None:
             docData["concatenation"] = self.concatenation
         return docData
+        
         
