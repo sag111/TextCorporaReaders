@@ -4,6 +4,86 @@ import os
 import re
 import xml.etree.ElementTree as ET
 
+# ятут исправил - брейк в проверке идеального совпадения конката и сущности убрал,
+# потому что терялась нужная сущность, если пересекали несколько, надо проверить, в скрипте перевода, нет ли такой ж еошибки
+# уддаление сущностей входящих в несколько линков добавил
+# и заменил множество на список при подсчёте упоминаний
+# после entity["MedEntityType"]==mergedEntity["MedEntityType"] добавил ADR, там не было
+def processConcat(docData):
+    for concatCluster in docData["concatenation"]["clusters"]:
+        concatedEntities = {}
+        # поиск сущностей, которые пересекаются с линками
+        for m_i in concatCluster:
+            link = docData["concatenation"]["mentions"][m_i]
+            concatedEntities[m_i] = []
+            for medEntity in docData["objects"]["MedEntity"]:
+                if medEntity["spans"][0]["begin"]==link["startPos"] and medEntity["spans"][0]["end"]==link["endPos"]:
+                    concatedEntities[m_i].append(medEntity)
+                    #break
+                elif medEntity["spans"][0]["begin"]<=link["endPos"] and medEntity["spans"][0]["end"]>=link["endPos"]:
+                    concatedEntities[m_i].append(medEntity)
+                elif medEntity["spans"][0]["begin"]<=link["startPos"] and medEntity["spans"][0]["end"]>=link["startPos"]:
+                    concatedEntities[m_i].append(medEntity)
+                elif medEntity["spans"][0]["begin"]>=link["startPos"] and medEntity["spans"][0]["end"]<=link["endPos"]:
+                    concatedEntities[m_i].append(medEntity)
+            if len(concatedEntities[m_i]) == 0:
+                # на самом деле это не ошибка, я такую возможность предполагал
+                # но надо понять, есть такое или нет
+                # если такого нет, то дальше все работает
+                raise ValueError("Link doesn't cross any entity")    
+        #print("concatedEntities", concatedEntities)
+        concatedEntities_list = [x for sublist in concatedEntities.values() for x in sublist]
+        
+        reverseIndex = {}
+        for e_i, entity in enumerate(concatedEntities_list):
+            reverseIndex[e_i] = []
+            for k in concatedEntities:
+                if entity in concatedEntities[k]:
+                    reverseIndex[e_i].append(k)
+        for k in sorted(reverseIndex.keys(), reverse=True):
+            if len(reverseIndex[k])>=len(concatedEntities.keys()):
+                del concatedEntities_list[k]
+        
+        #Объединение схожих сущностей и удаление одних из них
+        mergedEntities = []
+        entitiesToRemove = []
+        for entity in concatedEntities_list:
+            #print("entity", entity)
+            entityToMerge = None
+            for mergedEntity in mergedEntities:
+                #Проверить атрибуты, которые есть и там и там на совпадение
+                if entity["MedEntityType"]==mergedEntity["MedEntityType"]:
+                    if entity["MedEntityType"]=="Medication" and entity.get("MedType", "None")==mergedEntity.get("MedType", "None")\
+                     and entity.get("MedMaker", "None")==mergedEntity.get("MedMaker", "None")  and entity.get("MedFrom", "None")==mergedEntity.get("MedFrom", "None"):
+                        entityToMerge = mergedEntity
+                        break
+                    if entity["MedEntityType"]=="Disease" and entity["DisType"]==mergedEntity["DisType"]:
+                        entityToMerge = mergedEntity
+                        break
+                    if entity["MedEntityType"]=="ADR" and mergedEntity["MedEntityType"]=="ADR":
+                        entityToMerge = mergedEntity
+                        break
+            #print("entityToMerge", entityToMerge)
+            if entityToMerge == None:
+                mergedEntity = entity
+                mergedEntities.append(mergedEntity)
+            else:
+                entitiesToRemove.append(entity)
+                for k in entity.keys():
+                    if k not in ["next", "id", "startPos", "endPos", '{http://www.omg.org/XMI}id', "sofa", "begin", "end"]:
+                        if k not in mergedEntity:
+                            mergedEntity[k] = entity[k]
+                mergedEntity["spans"] += entity["spans"]
+        for entityToRemove in entitiesToRemove:
+            docData["objects"]["MedEntity"].remove(entityToRemove)
+
+def getEntityText(text, entity):
+    entityText = []
+    for span in entity["spans"]:
+        entityText.append(text[span["begin"]:span["end"]])
+    entityText = " ".join(entityText)
+    return entityText
+
 class UIMAxmiReader(object):
     """
     Класс для работы с форматом UIMA XMI
@@ -31,7 +111,7 @@ class UIMAxmiReader(object):
                 self.entities[k] = []
         pass
     
-    def processCoreference(self)
+    def processCoreference(self):
         clusterArrays = []
         for cluster in self.coreference["clusters"]:
             clusterArrays.append([])
@@ -48,7 +128,7 @@ class UIMAxmiReader(object):
 
         self.coreference["clusters"] = clusterArrays
     
-    def processConcatenation(self)
+    def processConcatenation(self):
         clusterArrays = []
         for cluster in self.concatenation["clusters"]:
             clusterArrays.append([])
@@ -87,17 +167,19 @@ class UIMAxmiReader(object):
                                                          "id": int(entity["{http://www.omg.org/XMI}id"])})
                 elif "CoreferenceChain" in child.tag:
                     self.coreference["clusters"].append({"firstId": int(entity['first'])})
-            elif self.coreference is not None and ("ConcatenationLink" in child.tag or "ConcatenationChain" in child.tag):
+            elif self.concatenation is not None and ("ConcatenationLink" in child.tag or "ConcatenationChain" in child.tag):
                 if "ConcatenationLink" in child.tag:
                     self.concatenation["mentions"].append({"startPos": int(entity["begin"]),
                                                          "endPos": int(entity["end"]),
                                                          "next": int(entity.get("next", -1)),
                                                          "id": int(entity["{http://www.omg.org/XMI}id"])})
-                elif "CoreferenceChain" in child.tag:
+                elif "ConcatenationChain" in child.tag:
                     self.concatenation["clusters"].append({"firstId": int(entity['first'])})
         
-        self.processCoreference()
-        self.processConcatenation()
+        if self.coreference is not None:
+            self.processCoreference()
+        if self.concatenation is not None:
+            self.processConcatenation()
         
         self.text = self.text.replace("&amp;", "&")
         self.text = self.text.replace("&#10;", "\n")
