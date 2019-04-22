@@ -30,27 +30,31 @@ class AnCoR2019(object):
             
             doc_d["coreference"] = {}
             doc_d["coreference"]["mentions"] = []
-            with open("{}/Mentions/{}".format(folderPath, fName), "r", encoding="utf-8") as f:
-                mentions = f.readlines()
-                mentions = [m.strip().split() for m in mentions]
-            for m_i, mention in enumerate(mentions):
-                mention_d = {}
-                mention_d["startPos"] = int(mention[1])
-                mention_d["endPos"] = int(mention[1]) + int(mention[2])
-                if m_i+1 != int(mention[0]):
-                    raise ValueError("wrong id of mention {}".format(mention))
-                doc_d["coreference"]["mentions"].append(mention_d)
+            if os.path.exists("{}/Mentions/{}".format(folderPath, fName)):
+                with open("{}/Mentions/{}".format(folderPath, fName), "r", encoding="utf-8") as f:
+                    mentions = f.readlines()
+                    mentions = [m.strip().split() for m in mentions]
+                for m_i, mention in enumerate(mentions):
+                    mention_d = {}
+                    mention_d["startPos"] = int(mention[1])
+                    mention_d["endPos"] = int(mention[1]) + int(mention[2])
+                    if m_i+1 != int(mention[0]):
+                        raise ValueError("wrong id of mention {}".format(mention))
+                    doc_d["coreference"]["mentions"].append(mention_d)
 
             doc_d["coreference"]["clusters"] = []
-            with open("{}/Chains/{}".format(folderPath, fName), "r", encoding="utf-8") as f:
-                chains = f.readlines()
-                chains = [ch.strip().split() for ch in chains]
-            clusters = {}
-            for chainedMention in chains:
-                if int(chainedMention[3]) not in clusters:
-                    clusters[int(chainedMention[3])] = []
-                clusters[int(chainedMention[3])].append(int(chainedMention[0])-1)
-            doc_d["coreference"]["clusters"] = [clusters[k] for k in sorted(clusters.keys())]
+            if os.path.exists("{}/Chains/{}".format(folderPath, fName)):
+                with open("{}/Chains/{}".format(folderPath, fName), "r", encoding="utf-8") as f:
+                    chains = f.readlines()
+                    chains = [ch.strip().split() for ch in chains]
+                clusters = {}
+                for chainedMention in chains:
+                    if int(chainedMention[3]) not in clusters:
+                        clusters[int(chainedMention[3])] = []
+                    clusters[int(chainedMention[3])].append(int(chainedMention[0])-1)
+                doc_d["coreference"]["clusters"] = [clusters[k] for k in sorted(clusters.keys())]
+            else:
+                doc_d["coreference"]["clusters"] = []
                 
 
             collection.append(doc_d)
