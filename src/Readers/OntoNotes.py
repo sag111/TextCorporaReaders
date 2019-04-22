@@ -128,7 +128,7 @@ class OntoNotesReader(object):
             collectionString += "#end document\n"
         
         if outFile is not None:
-            with open(outFile, "w") as f:
+            with open(outFile, "w", encoding="utf-8") as f:
                 f.write(collectionString)
         else:
             return strData
