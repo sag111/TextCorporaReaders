@@ -7,7 +7,7 @@ from collections import defaultdict
 from cassis import *
 from cassis.xmi import CasXmiSerializer
 from collections import defaultdict
-
+import logging
 
 def getEntityText(text, entity):
     entityText = []
@@ -45,7 +45,7 @@ class CASxmiReader(object):
         self.MedRelationsType = self.typesystem.get_type('webanno.custom.MedRelations')
 
 
-    def GetChainsAsClusters(self, linkDtype, chainDtype, objectsList):
+    def GetChainsAsClusters(self, casData, linkDtype, chainDtype, objectsList):
         for link in casData.select(linkDtype.name):
             objectsList["mentions"].append({
                     "startPos": int(link.begin),  # стоит ли сохранять next и id?
@@ -60,6 +60,7 @@ class CASxmiReader(object):
                     "endPos": int(nextLink.end)
                 }
                 objectsList["clusters"][-1].append(objectsList["mentions"].index(newLink_d))
+                nextLink = nextLink.next
 
     def getConcatedChains(self, casData):
         concatEdges = []
@@ -99,6 +100,7 @@ class CASxmiReader(object):
                     }
                 ],
                 "xmiID": medEntity.xmiID,
+                "text": casData.get_covered_text(medEntity),
                 "MedEntityType": medEntity.MedEntityType,
 
             }
@@ -106,29 +108,34 @@ class CASxmiReader(object):
             for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note"]:
                 if medEntity.__getattribute__(feature) is not None:
                     newEntity[feature] = medEntity.__getattribute__(feature)
-            entitiesObjects.append(newEntity)
-        
+            entitiesObjects["MedEntity"].append(newEntity)
         # для чейнов составляем структуры вида {mentions: [{startPos, endPos}], clusters:[[mention_idx_1, mention_idx_2], [...], ...]}
-        self.GetChainsAsClusters(self.CorefLinkType, self.CorefChainType, coreferenceObjects)
-        self.GetChainsAsClusters(self.ContextLinkType, self.ContextChainType, contextObjects)
+        self.GetChainsAsClusters(casData, self.CorefLinkType, self.CorefChainType, coreferenceObjects)
+        self.GetChainsAsClusters(casData, self.ContextLinkType, self.ContextChainType, contextObjects)
 
         if concatedAsSpans:
             # у нас отношения только одни - конкаты
             # я их не добавляю как объекты, вместо этого меняю поля начала и конца сущностей на список спанов
-            pathes = self.getConcatedChains(casData)
-            for path in pathes:
-                path = [medEntity for medEntity in entitiesObjects if medEntity["xmiID"] in path]
-                mergedEntity = path[0]
-                for e_i, entity in enumerate(path):
-                    for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note"]:
-                        if entity[feature] is not None and mergedEntity[entity] is None:
-                            mergedEntity[entity] = entity[feature]
-                    if e_i>0:
+            for k in entitiesObjects:
+                pathes = self.getConcatedChains(casData)
+                for path in pathes:
+                    path = [medEntity for medEntity in entitiesObjects[k] if medEntity["xmiID"] in path]
+                    mergedEntity = path[0]
+                    for e_i, entity in enumerate(path[1:]):
+                        equalEntities = True
+                        for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note"]:
+                            if entity.get(feature, None) is not None and mergedEntity.get(feature, None) is None:
+                                
+                                logging.warning("Concated different entities:{} vs {}".format(mergedEntity, entity))
+                                equalEntities = False
+                                #mergedEntity[feature] = entity[feature]
+                        if not equalEntities:
+                            continue
                         mergedEntity["spans"].append({
-                                "begin": int(entity.begin),
-                                "end": int(entity.end)
+                                "begin": int(entity["spans"][0]["begin"]),
+                                "end": int(entity["spans"][0]["end"])
                             })
-                    entitiesObjects.remove(entity)
+                        entitiesObjects[k].remove(entity)
         else:
             #если будут какие-то ещё отношения кроме конкатов, их надо подругому обрабатывать
 
