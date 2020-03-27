@@ -102,6 +102,8 @@ def processConcat(docData):
             for entity in mergedEntities:
                 for link in linksWithoutEntity:
                     entity["spans"].append({"begin": link["startPos"], "end": link["endPos"]})
+    for entity in docData["objects"]["MedEntity"]:
+            entity["spans"] = sorted(entity["spans"], key=lambda x:int(x["begin"]))
 
 def getEntityText(text, entity):
     entityText = []

@@ -135,7 +135,10 @@ class CASxmiReader(object):
                                 "begin": int(entity["spans"][0]["begin"]),
                                 "end": int(entity["spans"][0]["end"])
                             })
+                        mergedEntity["text"] += " " + entity["text"]
                         entitiesObjects[k].remove(entity)
+                for entity in entitiesObjects[k]:
+                    entity["spans"] = sorted(entity["spans"], key=lambda x:int(x["begin"]))
         else:
             #если будут какие-то ещё отношения кроме конкатов, их надо подругому обрабатывать
 
