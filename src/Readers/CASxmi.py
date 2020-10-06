@@ -61,6 +61,7 @@ class CASxmiReader(object):
                 }
                 objectsList["clusters"][-1].append(objectsList["mentions"].index(newLink_d))
                 nextLink = nextLink.next
+            objectsList["clusters"][-1] = sorted(objectsList["clusters"][-1])
 
     def getConcatedChains(self, casData):
         concatEdges = []
@@ -105,7 +106,7 @@ class CASxmiReader(object):
 
             }
             # заполняем поля признаками, которые могут быть не заданы
-            for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note"]:
+            for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note", "Context"]:
                 if medEntity.__getattribute__(feature) is not None:
                     newEntity[feature] = medEntity.__getattribute__(feature)
             entitiesObjects["MedEntity"].append(newEntity)
@@ -148,7 +149,7 @@ class CASxmiReader(object):
     def read(self, filePath):
         docData = {"meta": {}, "raw": ""}
         docData["meta"]["fileName"] = os.path.basename(filePath)
-        with open(filePath, "r") as f:
+        with open(filePath, "r", encoding="utf-8") as f:
             casData = load_cas_from_xmi(f.read(), typesystem=self.typesystem)
         docData["raw"] = casData.get_sofa().sofaString
         entitiesObjects, coreferenceObjects, contextObjects = self.getEntities(casData)
@@ -158,5 +159,52 @@ class CASxmiReader(object):
         if contextObjects is not None:
             docData["context"] = contextObjects
         return docData
+       
+    def write(self, jsonData, filePath):
+        newCas = Cas(self.typesystem)
+        newCas.sofa_string = jsonData["raw"]
         
-        
+        medEntity_requiredFeatures = [x.name for x in self.MedEntityType.all_features]
+        for medEntity in jsonData["objects"]["MedEntity"]:
+            spanEntities = []
+            for span in medEntity["spans"]:
+                newEntity = {k:v for k,v in medEntity.items() if k in medEntity_requiredFeatures}
+                casEntity = self.MedEntityType(**newEntity)
+                casEntity.sofa = newCas.get_sofa().xmiID
+                casEntity.begin = span["begin"]
+                casEntity.end = span["end"]
+                newCas.add_annotation(casEntity)
+                spanEntities.append(casEntity)
+                #break
+            if len(spanEntities)>1:
+                for gov, dep in zip(spanEntities, spanEntities[1:]):
+                    relAnn = self.MedRelationsType(Governor=gov, Dependent=dep, RelationType="concat")
+                    newCas.add_annotation(relAnn)
+          
+        for cluster in jsonData["coreference"]["clusters"]:
+            prevLink = None
+            for m_i in sorted(cluster, reverse=True):
+                mention = jsonData["coreference"]["mentions"][m_i]
+                linkAnn = self.CorefLinkType(begin=mention['startPos'], end=mention['endPos'])
+                if prevLink is not None:
+                    linkAnn.next = prevLink
+                newCas.add_annotation(linkAnn)
+                prevLink = linkAnn
+            chainAnn = self.CorefChainType(first=prevLink)
+            newCas.add_annotation(chainAnn)
+
+        if self.typesystem.contains_type('webanno.custom.ContextChainChain'):
+            for cluster in jsonData["context"]["clusters"]:
+                prevLink = None
+                for m_i in sorted(cluster, reverse=True):
+                    mention = jsonData["context"]["mentions"][m_i]
+                    linkAnn = self.ContextLinkType(begin=mention['startPos'], end=mention['endPos'])
+                    if prevLink is not None:
+                        linkAnn.next = prevLink
+                    newCas.add_annotation(linkAnn)
+                    prevLink = linkAnn
+                chainAnn = self.ContextChainType(first=prevLink)
+                newCas.add_annotation(chainAnn)
+        serializer = CasXmiSerializer()
+        with open(filePath, "wb") as f:
+            serializer.serialize(f, newCas)
