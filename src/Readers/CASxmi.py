@@ -43,9 +43,14 @@ class CASxmiReader(object):
         self.CorefLinkType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.coref.type.CoreferenceLink')
         self.CorefChainType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.coref.type.CoreferenceChain')
         self.MedRelationsType = self.typesystem.get_type('webanno.custom.MedRelations')
+        self.MetaDataType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.metadata.type.DocumentMetaData')
+        self.SentenceType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence')
+        self.TokenType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token')
 
 
     def GetChainsAsClusters(self, casData, linkDtype, chainDtype, objectsList):
+        objectsList["mentions"]
+        objectsList["clusters"]
         for link in casData.select(linkDtype.name):
             objectsList["mentions"].append({
                     "startPos": int(link.begin),  # стоит ли сохранять next и id?
@@ -146,12 +151,32 @@ class CASxmiReader(object):
             raise ValueError("Not implemented")
         return entitiesObjects, coreferenceObjects, contextObjects
     
+    def getSegmentation(self, casData, docData):
+        docData["sentences"] = []
+        sentencesBounds = []
+        for sent in casData.select(self.SentenceType.name):
+            docData["sentences"].append([])
+            sentencesBounds.append((sent.begin, sent.end))
+        sentencesBounds = sorted(sentencesBounds, key=lambda x:x[0])
+        for token in casData.select(self.TokenType.name):
+            for s_i, sentBound in enumerate(sentencesBounds):
+                if token.begin >= sentBound[0] and token.begin < sentBound[1]:
+                    break
+            docData["sentences"][s_i].append({
+                "forma": casData.get_covered_text(token),
+                "start": token.begin,
+                "end": token.end,
+            })
+
     def read(self, filePath):
         docData = {"meta": {}, "raw": ""}
         docData["meta"]["fileName"] = os.path.basename(filePath)
         with open(filePath, "r", encoding="utf-8") as f:
             casData = load_cas_from_xmi(f.read(), typesystem=self.typesystem)
+        for smth in casData.select(self.MetaDataType.name):
+            docData["meta"]["annotator"] = smth.documentId
         docData["raw"] = casData.get_sofa().sofaString
+        self.getSegmentation(casData, docData)
         entitiesObjects, coreferenceObjects, contextObjects = self.getEntities(casData)
         docData["objects"] = entitiesObjects
         if coreferenceObjects is not None:
@@ -159,11 +184,31 @@ class CASxmiReader(object):
         if contextObjects is not None:
             docData["context"] = contextObjects
         return docData
-       
+    
+    def addSegmentationToCas(self, casData, docData):
+        prevSentenceBounds = None
+        for sentence in docData["sentences"]:
+            if prevSentenceBounds is not None:
+                prevSentenceBounds[1] = sentence[0]["start"]
+                casData.add_annotation(self.SentenceType(begin=prevSentenceBounds[0], end=prevSentenceBounds[1]))
+            prevSentenceBounds = [sentence[0]["start"], sentence[-1]["end"]]
+            for token in sentence:
+                casData.add_annotation(self.TokenType(begin=token["start"], end=token["end"]))
+        if prevSentenceBounds is not None:
+            prevSentenceBounds[1] = sentence[0]["start"]
+            casData.add_annotation(self.SentenceType(begin=prevSentenceBounds[0], end=prevSentenceBounds[1]))
+
     def write(self, jsonData, filePath):
         newCas = Cas(self.typesystem)
         newCas.sofa_string = jsonData["raw"]
         
+        if "annotator" in jsonData["meta"]:
+            docMeta = self.MetaDataType()
+            docMeta.documentId = jsonData["meta"]["annotator"]
+            newCas.add_annotation(docMeta)
+            
+        self.addSegmentationToCas(newCas, jsonData)
+
         medEntity_requiredFeatures = [x.name for x in self.MedEntityType.all_features]
         for medEntity in jsonData["objects"]["MedEntity"]:
             spanEntities = []
