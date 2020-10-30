@@ -17,7 +17,7 @@ def getEntityText(text, entity):
     return entityText
 
 
-class CASxmiReader(object):
+class RDRxmiReader(object):
     """
     Класс для работы с форматом UIMA XMI
     Сейчас реализовано извлечение текста и заданных слоёв разметки
