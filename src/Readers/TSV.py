@@ -54,16 +54,14 @@ class TSVReader(object):
         line = "\t".join(line)
         return line
     
-    def read(self, filePath):
+    def read(self, conllu, docName):
         """
         Чтение файла
         Parameters:
             filePath - путь к файлу
         Returns:
             dict - считанный корпус или текст в формате sagnlpJSON
-        """
-        with open(filePath, "r", encoding="utf-8") as f:
-            conllu = f.read()
+        """        
 
         # удалить все новые строки в конце файла
         #conllu = conllu[:-2]  # потому что в конце conllu \n\n
@@ -74,7 +72,7 @@ class TSVReader(object):
         
         #dicts = [[self.tokenLineToDict(token) for token in sent if len(token)==10] for sent in conllu ]
         text = {"raw":"", "meta":{}, "sentences": [], "paragraphs": []}
-        text["meta"]["fileName"] = os.path.basename(filePath)
+        text["meta"]["fileName"] = docName
         rawText = ""
         for s_i, sent in enumerate(conllu):
             sentence_d = {"raw":"", "meta":{}, "tokens":[]}
@@ -113,6 +111,12 @@ class TSVReader(object):
         text["raw"] = rawText
         return text
         
+    def read_file(self, filePath):
+        with open(filePath, "r", encoding="utf-8") as f:
+            conllu = f.read()
+        docData = self.read(conllu, os.path.basename(filePath))
+        return docData
+
     def write(self, data, filePath=None):
         conllLines = []
         if "id" in data["meta"]:
