@@ -14,8 +14,8 @@ def addTokensPositions(docData):
     for sentData in docData["sentences"]:
         for t_i, token in enumerate(sentData["tokens"]):
             token["startPos"] = lastPos
-            token["endPos"] = lastPos + len(token["form"])            
-            lastPos += len(token["form"])
+            token["endPos"] = lastPos + len(token["forma"])            
+            lastPos += len(token["forma"])
             if "spaceAfter" in token:
                 if token["spaceAfter"] == "_":
                     lastPos += 1
@@ -30,15 +30,15 @@ def addTokensPositions(docData):
     lastPos = 0
     for s_i, sentData in enumerate(docData["sentences"]):
         for t_i, token in enumerate(sentData["tokens"]):
-            pos = docData["raw"].find(token["form"], lastPos)
+            pos = docData["raw"].find(token["forma"], lastPos)
             if pos != -1:
                 lastPos = pos
             else:
                 # фикс специально для ontonotes, 
                 # там разделение идёт по пробелам, поэтому в токенах их не должно быть
                 # поэтому я иногда их заменял на _, но для поиска позиций надо их вернуть на место
-                token["form"] = token["form"].replace("_", " ")
-                pos = docData["raw"].find(token["form"], lastPos)
+                token["forma"] = token["forma"].replace("_", " ")
+                pos = docData["raw"].find(token["forma"], lastPos)
                 if pos == -1:
                     # если токен все равно не был найден, например это тэг [CLS] из берта
                     token["startPos"] = -1
@@ -47,9 +47,9 @@ def addTokensPositions(docData):
                 else:
                     lastPos = pos
             token["startPos"] = lastPos
-            token["endPos"] = lastPos + len(token["form"])
-            lastPos += len(token["form"])
-            #print(s_i, t_i,lastPos,  token["form"], token["startPos"], token["endPos"])
+            token["endPos"] = lastPos + len(token["forma"])
+            lastPos += len(token["forma"])
+            #print(s_i, t_i,lastPos,  token["forma"], token["startPos"], token["endPos"])
 
 
 wrongBounds = 0
@@ -62,7 +62,7 @@ def projectCorefPosToTokens(docData):
         tokenIdx = 0
         mention["startToken"], mention["endToken"] = -999, -999
         for sentence in docData["sentences"]:
-            for token in sentence["tokens"]:
+            for t_i, token in enumerate(sentence["tokens"]):
                 
                 if token["startPos"]==mention["startPos"]:
                     mention["startToken"] = tokenIdx
@@ -70,21 +70,23 @@ def projectCorefPosToTokens(docData):
                 if token["endPos"]==mention["endPos"]:
                     mention["endToken"] = tokenIdx
                     goodBounds += 1
-                if mention["startToken"] == -999:
-                    if token["startPos"] < mention["startPos"] and token["endPos"] > mention["startPos"]:
-                        mention["startToken"] = tokenIdx
-                        #wrongBounds += 1
-                    elif token["startPos"] > mention["startPos"] and mention["startToken"] == -999:
-                        mention["startToken"] = tokenIdx
-                        #wrongBounds += 1
+                #if mention["startToken"] == -999:
+                if token["startPos"] < mention["startPos"] and token["endPos"] > mention["startPos"]:
+                    mention["startToken"] = tokenIdx
+                    #wrongBounds += 1
+                elif token["startPos"] > mention["startPos"] and mention["startToken"] == -999:
+                    mention["startToken"] = tokenIdx
+                    #wrongBounds += 1
                 #if mention["endToken"] not in mention:
-                if mention["endToken"] == -999:
-                    if token["endPos"] > mention["endPos"] and token["startPos"] < mention["endPos"]:
-                        mention["endToken"] = tokenIdx
-                        #wrongBounds += 1
-                    elif token["endPos"] < mention["endPos"] and tokenIdx > mention["endToken"]:
-                        mention["endToken"] = tokenIdx
-                        #wrongBounds += 1
+                #if mention["endToken"] == -999:
+                if token["endPos"] > mention["endPos"] and token["startPos"] < mention["endPos"]:
+                    mention["endToken"] = tokenIdx
+                    #wrongBounds += 1
+                elif token["endPos"] < mention["endPos"] and sentence["tokens"][min(len(sentence["tokens"])-1, t_i+1)]["startPos"]>mention["endPos"]:
+                    mention["endToken"] = tokenIdx
+                elif token["endPos"] < mention["endPos"] and tokenIdx > mention["endToken"]:
+                    mention["endToken"] = tokenIdx
+                    #wrongBounds += 1
                 tokenIdx += 1
         if (mention["startToken"] == -999) or (mention["endToken"] == -999):
             raise ValueError("Can't find border token for mention:\n{}".format(mention))

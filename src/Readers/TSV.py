@@ -2,7 +2,7 @@
 import os
 import re
 
-COLUMNS_CONLL = ["id", "form", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "spaceAfter"]
+COLUMNS_CONLL = ["id", "forma", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "spaceAfter"]
 DTYPES_CONLL = {"id": int, "head": int}
 
 class TSVReader(object):
@@ -99,7 +99,7 @@ class TSVReader(object):
                 
                 sentence_d["tokens"].append(token_d)
                 
-                rawText += token_d["form"]
+                rawText += token_d["forma"]
                 if token_d.get("spaceAfter", "_") == "_":
                     rawText += " "
                 elif token_d["spaceAfter"] == "No":
