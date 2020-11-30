@@ -208,14 +208,14 @@ class FBCorefJsonline(object):
         """
         sagNLP = deepcopy(sagNLP)
         newSentences = []
-        token_idx =  0
+        subtoken_idx =  0
         prevSentIdx = 0
         prevTokenIdx = 0
         currentToken = {}
         currentSent = []
         for sent in sagNLP["sentences"]:
             for t_i, token in enumerate(sent):
-                if subtoken_map[token_idx] == prevTokenIdx:
+                if subtoken_map[subtoken_idx] == prevTokenIdx:
                     if token["forma"] not in ["[CLS]", "[SEP]"]:
                         if token["forma"][:2] == "##":
                             currentToken["forma"] += token["forma"][2:]
@@ -225,17 +225,21 @@ class FBCorefJsonline(object):
                             currentToken["forma"] += token["forma"]
                 else:
                     currentSent.append(currentToken)
-                    if sentence_map[token_idx] != prevSentIdx:
+                    if sentence_map[subtoken_idx] != prevSentIdx:
                         newSentences.append(currentSent)
                         currentSent = []
-                        prevSentIdx = sentence_map[token_idx]
+                        prevSentIdx = sentence_map[subtoken_idx]
                     currentToken = token
-                    prevTokenIdx = subtoken_map[token_idx]
-                token_idx += 1
+                    prevTokenIdx = subtoken_map[subtoken_idx]
+                subtoken_idx += 1
         currentSent.append(currentToken)
         if len(currentSent)>0:
             newSentences.append(currentSent)
         sagNLP["sentences"] = newSentences
+        # fix mention token idxes
+        for mention in sagNLP["coreference"]["mentions"]:
+            mention["startToken"] = subtoken_map[mention["startToken"]]
+            mention["endToken"] = subtoken_map[mention["endToken"]]
         return sagNLP
 
     def makeSubtokens(self, sagNLP, tokenizer):
