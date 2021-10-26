@@ -2,20 +2,33 @@
 import os
 import re
 
-class CoNLLUReader(object):
+COLUMNS_CONLL = ["id", "forma", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "spaceAfter"]
+DTYPES_CONLL = {"id": int, "head": int}
+
+class TSVReader(object):
     """
-    Класс для работы с форматом Conll-u
+    Класс для работы с форматом tab separated values
+    В одном файле может быть несколько текстов
+    Тексты начинаются с комментария #
+    Предложения разделены пустой строкой
+    Каждая строка - токен, признаки токена разделены табуляцией
     """
-    def __init__(self):
-        self.columns = ["id", "form", "lemma", "upos", "xpos", "morph", "head", "deprel", "deps", "spaceAfter"]
-        self.dtypes = {"id": int, "head": int}
+    def __init__(self, columns, dtypes):
+        self.columns = columns
+        self.dtypes = dtypes
         pass
     
     def tokenLineToDict(self, tokenLine):
+        """
+        Преобразование строки токена в словарь
+        """
         d = {}
         for c_i, c in enumerate(self.columns):
             if c=="spaceAfter":
+                # в колонке отвечающей за то, какой непечатный символ следует за словом
+                # оставляю только сам символ и заменяю их экранированные варианты на сам символ
                 tokenLine[c_i] = re.sub("Spaces?After=", "", tokenLine[c_i], re.U)
+                # с этим какая-то проблема была, не помню, приходилось убирать возвращение каретки
                 tokenLine[c_i] = tokenLine[c_i].replace("\\r\\n", "\n")
                 tokenLine[c_i] = tokenLine[c_i].replace("\\n", "\n")
                 tokenLine[c_i] = tokenLine[c_i].replace("\\s", " ")
@@ -25,8 +38,12 @@ class CoNLLUReader(object):
                 d[c] = tokenLine[c_i]            
         return d
     
-    def tokenDictToLine(self, tokenDict):        
-        if tokenDict["spaceAfter"] !="_":
+    def tokenDictToLine(self, tokenDict):
+        """
+        Преобразование словаря с описанием токена в строку с табуляцией
+        """
+        if "spaceAfter" in tokenDict and tokenDict["spaceAfter"] !="_":
+            # заменяем обратно непечатные символы на экранированные варианты
             tokenDict["spaceAfter"] = tokenDict["spaceAfter"].replace("\n", "\\n")
             tokenDict["spaceAfter"] = tokenDict["spaceAfter"].replace(" ", "\\s")
             if tokenDict["spaceAfter"]=="No":
@@ -37,26 +54,31 @@ class CoNLLUReader(object):
         line = "\t".join(line)
         return line
     
-    def tokensToPositions():
-        pass
-    
-    def read(self, filePath):
-        with open(filePath, "r", encoding="utf-8") as f:
-            conllu = f.read()
-        conllu = conllu[:-2]  # потому что в конце conllu \n\n
+    def read(self, conllu, docName):
+        """
+        Чтение файла
+        Parameters:
+            filePath - путь к файлу
+        Returns:
+            dict - считанный корпус или текст в формате sagnlpJSON
+        """        
+
+        # удалить все новые строки в конце файла
+        #conllu = conllu[:-2]  # потому что в конце conllu \n\n
+        conllu = re.sub("\n+$", "", conllu)
         conllu = conllu.split("\n\n")
         conllu = [x.split("\n") for x in conllu]
         conllu = [[token.strip().split("\t") for token in sent] for sent in conllu ]
         
         #dicts = [[self.tokenLineToDict(token) for token in sent if len(token)==10] for sent in conllu ]
         text = {"raw":"", "meta":{}, "sentences": [], "paragraphs": []}
-        text["meta"]["fileName"] = os.path.basename(filePath)
+        text["meta"]["fileName"] = docName
         rawText = ""
         for s_i, sent in enumerate(conllu):
             sentence_d = {"raw":"", "meta":{}, "tokens":[]}
             for t_i, token in enumerate(sent):
                 token_d = {}
-                if len(token) != 10:
+                if len(token) != len(self.columns):
                     # либо это коммент либо какая-то хрень
                     token = "\t".join(token)
                     if token[0] == "#":
@@ -72,13 +94,13 @@ class CoNLLUReader(object):
                             sentence_d["raw"] = token.replace("# text = ", "")  
                         continue
                     else:
-                        raise ValueError("Wierd token with len less then 10:\n{}".format(token))
+                        raise ValueError("Wierd token {} in sent {} with len less then {}:\n{}".format(t_i, s_i, len(self.columns), token))
                 token_d = self.tokenLineToDict(token)
                 
                 sentence_d["tokens"].append(token_d)
                 
-                rawText += token_d["form"]
-                if token_d["spaceAfter"] == "_":
+                rawText += token_d["forma"]
+                if token_d.get("spaceAfter", "_") == "_":
                     rawText += " "
                 elif token_d["spaceAfter"] == "No":
                     continue
@@ -89,13 +111,21 @@ class CoNLLUReader(object):
         text["raw"] = rawText
         return text
         
+    def read_file(self, filePath):
+        with open(filePath, "r", encoding="utf-8") as f:
+            conllu = f.read()
+        docData = self.read(conllu, os.path.basename(filePath))
+        return docData
+
     def write(self, data, filePath=None):
         conllLines = []
-        conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
+        if "id" in data["meta"]:
+            conllLines.append("# newdoc id = {}".format(data["meta"]["id"]))
         for s_i, sentence_d in enumerate(data["sentences"]):
             if s_i in data["paragraphs"]:
                 conllLines.append("# newpar")
-            conllLines.append("# sent_id = {}".format(sentence_d["meta"]["id"]))
+            if "id" in sentence_d["meta"]:
+                conllLines.append("# sent_id = {}".format(sentence_d["meta"]["id"]))
             conllLines.append("# text = {}".format(sentence_d["raw"]))
             
             for token in sentence_d["tokens"]:

@@ -24,7 +24,7 @@ class AnCoR2019(object):
         for fName in fileNames:
             doc_d = {"raw": "", "meta": {}}
             doc_d["meta"]["fileName"] = fName
-            with open("{}/Texts/{}".format(folderPath, fName), "r", encoding="utf-8") as f:
+            with open("{}/Texts/{}".format(folderPath, fName), "r", encoding="utf-16") as f:
                 text = f.read()
             doc_d["raw"] = text
             
