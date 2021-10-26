@@ -195,7 +195,7 @@ class RDRxmiReader(object):
             for token in sentence:
                 casData.add_annotation(self.TokenType(begin=token["start"], end=token["end"]))
         if prevSentenceBounds is not None:
-            prevSentenceBounds[1] = sentence[0]["start"]
+            prevSentenceBounds[1] = sentence[-1]["end"]
             casData.add_annotation(self.SentenceType(begin=prevSentenceBounds[0], end=prevSentenceBounds[1]))
 
     def write(self, jsonData, filePath):
