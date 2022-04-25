@@ -17,7 +17,7 @@ def getEntityText(text, entity):
     return entityText
 
 
-class RDRxmiReader(object):
+class RuDRecxmiReader(object):
     """
     Класс для работы с форматом UIMA XMI
     Сейчас реализовано извлечение текста и заданных слоёв разметки
@@ -36,13 +36,9 @@ class RDRxmiReader(object):
         self.GetTypes()
 
     def GetTypes(self):
-        self.ContextLinkType =  self.typesystem.get_type('webanno.custom.ContextChainLink')
-        self.ContextChainType =  self.typesystem.get_type('webanno.custom.ContextChainChain')
-        self.ConcatLinkType = self.typesystem.get_type('webanno.custom.MedRelations')
-        self.MedEntityType = self.typesystem.get_type('webanno.custom.MedEntity')
-        self.CorefLinkType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.coref.type.CoreferenceLink')
-        self.CorefChainType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.coref.type.CoreferenceChain')
-        self.MedRelationsType = self.typesystem.get_type('webanno.custom.MedRelations')
+        self.NERType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.ner.type.NamedEntity')
+        self.SentenceLinkType = self.typesystem.get_type('webanno.custom.SentenceLink')
+        self.SentenceChainType = self.typesystem.get_type('webanno.custom.SentenceChain')
         self.MetaDataType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.metadata.type.DocumentMetaData')
         self.SentenceType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence')
         self.TokenType = self.typesystem.get_type('de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token')
@@ -68,88 +64,29 @@ class RDRxmiReader(object):
                 nextLink = nextLink.next
             objectsList["clusters"][-1] = sorted(objectsList["clusters"][-1])
 
-    def getConcatedChains(self, casData):
-        concatEdges = []
-        for rel in casData.select(self.MedRelationsType.name):
-            concatEdges.append(sorted([rel.Dependent.xmiID, rel.Governor.xmiID]))
-        flatted = [x for sublist in concatEdges for x in sublist]
-        uniq = sorted(list(set(flatted)))
-
-        def dfs(v):
-            hist[v] = True
-            for w in uniq:
-                if w==v:
-                    continue
-                if not hist[w]:
-                    for edge in concatEdges:
-                         if len(set([v,w]) & set(edge))==2:
-                            dfs(w)
-        pathes = set()
-        for v in uniq:
-            hist = defaultdict(bool)
-            dfs(v)
-            path = tuple(sorted([k for k,v in hist.items() if v]))
-            pathes.add(path)
-        return pathes
 
     def getEntities(self, casData, concatedAsSpans=True):
         text = casData.get_sofa().sofaString
-        entitiesObjects, coreferenceObjects, contextObjects = defaultdict(list), defaultdict(list), defaultdict(list)
+        entitiesObjects, sentencesLinksObjects = defaultdict(list), defaultdict(list)
         # собираем список сущностей в исходном в файле в список словарей
-        for medEntity in casData.select(self.MedEntityType.name):
+        for nerEntity in casData.select(self.NERType.name):
             # заполняем поля словаря обязательными признаками
             newEntity = {
                 "spans": [
                     {
-                        "begin": int(medEntity.begin),
-                        "end": int(medEntity.end)
+                        "begin": int(nerEntity.begin),
+                        "end": int(nerEntity.end)
                     }
                 ],
-                "xmiID": medEntity.xmiID,
-                "text": casData.get_covered_text(medEntity),
-                "MedEntityType": medEntity.MedEntityType,
+                "xmiID": nerEntity.xmiID,
+                "text": casData.get_covered_text(nerEntity),
+                "MedEntityType": nerEntity.value,
 
             }
-            # заполняем поля признаками, которые могут быть не заданы
-            for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note", "Context"]:
-                if medEntity.__getattribute__(feature) is not None:
-                    newEntity[feature] = medEntity.__getattribute__(feature)
-            entitiesObjects["MedEntity"].append(newEntity)
+            entitiesObjects["NER"].append(newEntity)
         # для чейнов составляем структуры вида {mentions: [{startPos, endPos}], clusters:[[mention_idx_1, mention_idx_2], [...], ...]}
-        self.GetChainsAsClusters(casData, self.CorefLinkType, self.CorefChainType, coreferenceObjects)
-        self.GetChainsAsClusters(casData, self.ContextLinkType, self.ContextChainType, contextObjects)
-
-        if concatedAsSpans:
-            # у нас отношения только одни - конкаты
-            # я их не добавляю как объекты, вместо этого меняю поля начала и конца сущностей на список спанов
-            for k in entitiesObjects:
-                pathes = self.getConcatedChains(casData)
-                for path in pathes:
-                    path = [medEntity for medEntity in entitiesObjects[k] if medEntity["xmiID"] in path]
-                    mergedEntity = path[0]
-                    for e_i, entity in enumerate(path[1:]):
-                        equalEntities = True
-                        for feature in ["DisType", "MedType", "MedFrom", "MedMaker", "Note"]:
-                            if entity.get(feature, None) is not None and mergedEntity.get(feature, None) is None:
-                                
-                                logging.warning("Concated different entities:{} vs {}".format(mergedEntity, entity))
-                                equalEntities = False
-                                #mergedEntity[feature] = entity[feature]
-                        if not equalEntities:
-                            continue
-                        mergedEntity["spans"].append({
-                                "begin": int(entity["spans"][0]["begin"]),
-                                "end": int(entity["spans"][0]["end"])
-                            })
-                        mergedEntity["text"] += " " + entity["text"]
-                        entitiesObjects[k].remove(entity)
-                for entity in entitiesObjects[k]:
-                    entity["spans"] = sorted(entity["spans"], key=lambda x:int(x["begin"]))
-        else:
-            #если будут какие-то ещё отношения кроме конкатов, их надо подругому обрабатывать
-
-            raise ValueError("Not implemented")
-        return entitiesObjects, coreferenceObjects, contextObjects
+        self.GetChainsAsClusters(casData, self.SentenceLinkType, self.SentenceChainType, sentencesLinksObjects)
+        return entitiesObjects, sentencesLinksObjects
     
     def getSegmentation(self, casData, docData):
         docData["sentences"] = []
@@ -177,12 +114,9 @@ class RDRxmiReader(object):
             docData["meta"]["annotator"] = smth.documentId
         docData["raw"] = casData.get_sofa().sofaString
         self.getSegmentation(casData, docData)
-        entitiesObjects, coreferenceObjects, contextObjects = self.getEntities(casData)
+        entitiesObjects, sentencesLinksObjects = self.getEntities(casData)
         docData["objects"] = entitiesObjects
-        if coreferenceObjects is not None:
-            docData["coreference"] = coreferenceObjects
-        if contextObjects is not None:
-            docData["context"] = contextObjects
+        docData["SentenceLinks"] = sentencesLinksObjects
         return docData
     
     def addSegmentationToCas(self, casData, docData):
