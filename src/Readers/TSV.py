@@ -54,7 +54,7 @@ class TSVReader(object):
         line = "\t".join(line)
         return line
     
-    def read(self, conllu, docName):
+    def read(self, conllu, docName=""):
         """
         Чтение файла
         Parameters:

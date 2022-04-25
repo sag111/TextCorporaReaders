@@ -16,7 +16,7 @@ class AnCoR2019(object):
     def __init__(self):
         pass
 
-    def readCollection(self, folderPath):
+    def readCollection(self, folderPath, encoding="utf-16"):
         collection = []
         fileNames = []
         for fName in os.listdir("{}/Texts".format(folderPath)):
@@ -24,7 +24,7 @@ class AnCoR2019(object):
         for fName in fileNames:
             doc_d = {"raw": "", "meta": {}}
             doc_d["meta"]["fileName"] = fName
-            with open("{}/Texts/{}".format(folderPath, fName), "r", encoding="utf-16") as f:
+            with open("{}/Texts/{}".format(folderPath, fName), "r", encoding=encoding) as f:
                 text = f.read()
             doc_d["raw"] = text
             
