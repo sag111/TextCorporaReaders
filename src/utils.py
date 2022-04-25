@@ -57,37 +57,29 @@ goodBounds = 0
 totalMentions = 0
 def projectCorefPosToTokens(docData):
     global wrongBounds, goodBounds, totalMentions
+    tokens_flat = [t for s in docData["sentences"] for t in s["tokens"]]
     for mention in docData["coreference"]["mentions"]:
         totalMentions += 1
         tokenIdx = 0
         mention["startToken"], mention["endToken"] = -999, -999
-        for sentence in docData["sentences"]:
-            for t_i, token in enumerate(sentence["tokens"]):
-                
-                if token["startPos"]==mention["startPos"]:
-                    mention["startToken"] = tokenIdx
-                    goodBounds += 1
-                if token["endPos"]==mention["endPos"]:
-                    mention["endToken"] = tokenIdx
-                    goodBounds += 1
-                #if mention["startToken"] == -999:
-                if token["startPos"] < mention["startPos"] and token["endPos"] > mention["startPos"]:
-                    mention["startToken"] = tokenIdx
-                    #wrongBounds += 1
-                elif token["startPos"] > mention["startPos"] and mention["startToken"] == -999:
-                    mention["startToken"] = tokenIdx
-                    #wrongBounds += 1
-                #if mention["endToken"] not in mention:
-                #if mention["endToken"] == -999:
-                if token["endPos"] > mention["endPos"] and token["startPos"] < mention["endPos"]:
-                    mention["endToken"] = tokenIdx
-                    #wrongBounds += 1
-                elif token["endPos"] < mention["endPos"] and sentence["tokens"][min(len(sentence["tokens"])-1, t_i+1)]["startPos"]>mention["endPos"]:
-                    mention["endToken"] = tokenIdx
-                elif token["endPos"] < mention["endPos"] and tokenIdx > mention["endToken"]:
-                    mention["endToken"] = tokenIdx
-                    #wrongBounds += 1
-                tokenIdx += 1
+        chosenStartToken, chosenEndToken = None, None
+        for t_i, token in enumerate(tokens_flat):
+            if token["startPos"] >= 0:
+                if chosenStartToken is None or abs(chosenStartToken["startPos"] - mention["startPos"]) > abs(token["startPos"] - mention["startPos"]):
+                    chosenStartToken = token
+                    mention["startToken"] = t_i
+            if token["endPos"] >= 0:
+                if chosenEndToken is None or abs(chosenEndToken["endPos"] - mention["endPos"]) > abs(token["endPos"] - mention["endPos"]):
+                    chosenEndToken = token
+                    mention["endToken"] = t_i
+        if mention["startToken"] > mention["endToken"]:
+            if abs(chosenStartToken["startPos"] - mention["startPos"]) < abs(chosenEndToken["endPos"] - mention["endPos"]):
+                mention["endToken"] += 1
+                assert mention["endToken"] < len(tokens_flat)
+            else:
+                mention["startToken"] -= 1
+                assert mention["startToken"] > 0
+        assert mention["startToken"] <= mention["endToken"]
         if (mention["startToken"] == -999) or (mention["endToken"] == -999):
             raise ValueError("Can't find border token for mention:\n{}".format(mention))
 
